@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { randomUUID } from "crypto";
+import { randomUUID, createHmac } from "crypto";
 
 const WALLET_ADDRESS = "6D9hPAdCYbH2tXRra6gVQn5P1AToLseyirvpQtbziFk9";
 
@@ -147,6 +147,115 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Error unlocking results:", err);
       res.status(500).json({ message: "Failed to unlock results" });
+    }
+  });
+
+  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
+  const TOKEN_SECRET = process.env.SESSION_SECRET || "fallback-secret";
+  const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000;
+  const adminTokens = new Map<string, number>();
+  let loginAttempts = 0;
+  let lastAttemptReset = Date.now();
+
+  function generateAdminToken(): string {
+    const payload = `${randomUUID()}-${Date.now()}`;
+    const token = createHmac("sha256", TOKEN_SECRET).update(payload).digest("hex");
+    adminTokens.set(token, Date.now() + TOKEN_EXPIRY_MS);
+    return token;
+  }
+
+  function isValidAdminToken(token: string): boolean {
+    const expiry = adminTokens.get(token);
+    if (!expiry) return false;
+    if (Date.now() > expiry) {
+      adminTokens.delete(token);
+      return false;
+    }
+    return true;
+  }
+
+  function requireAdmin(req: any, res: any, next: any) {
+    const auth = req.headers.authorization;
+    if (!auth || !auth.startsWith("Bearer ")) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    const token = auth.slice(7);
+    if (!isValidAdminToken(token)) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    next();
+  }
+
+  app.post("/api/admin/login", (req, res) => {
+    if (Date.now() - lastAttemptReset > 60000) {
+      loginAttempts = 0;
+      lastAttemptReset = Date.now();
+    }
+    if (loginAttempts >= 10) {
+      return res.status(429).json({ message: "Too many attempts. Try again later." });
+    }
+    loginAttempts++;
+
+    const { password } = req.body;
+    if (password === ADMIN_PASSWORD) {
+      loginAttempts = 0;
+      const token = generateAdminToken();
+      res.json({ success: true, token });
+    } else {
+      res.status(401).json({ message: "Invalid password" });
+    }
+  });
+
+  app.get("/api/admin/searches", requireAdmin, async (_req, res) => {
+    try {
+      const allSearches = await storage.getAllSearches();
+      const searchesWithResults = await Promise.all(
+        allSearches.map(async (search) => {
+          const results = await storage.getSearchResults(search.id);
+          const payment = await storage.getPaymentBySearchId(search.id);
+          return {
+            ...search,
+            imageData: search.imageData.substring(0, 100) + "...",
+            resultCount: results.length,
+            isPaid: !!payment,
+            payment: payment || null,
+          };
+        })
+      );
+      res.json(searchesWithResults);
+    } catch (err) {
+      console.error("Error fetching admin searches:", err);
+      res.status(500).json({ message: "Failed to fetch searches" });
+    }
+  });
+
+  app.get("/api/admin/searches/:id", requireAdmin, async (req, res) => {
+    try {
+      const search = await storage.getSearch(req.params.id);
+      if (!search) {
+        return res.status(404).json({ message: "Search not found" });
+      }
+      const results = await storage.getSearchResults(search.id);
+      const payment = await storage.getPaymentBySearchId(search.id);
+      res.json({ search, results, payment: payment || null });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch search details" });
+    }
+  });
+
+  app.get("/api/admin/stats", requireAdmin, async (_req, res) => {
+    try {
+      const allSearches = await storage.getAllSearches();
+      const allPayments = await storage.getAllPayments();
+      const totalRevenue = allPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      res.json({
+        totalSearches: allSearches.length,
+        completedSearches: allSearches.filter((s) => s.status === "completed").length,
+        totalPayments: allPayments.length,
+        totalRevenue,
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch stats" });
     }
   });
 
