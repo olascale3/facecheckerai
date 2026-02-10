@@ -1,38 +1,65 @@
-import { type User, type InsertUser } from "@shared/schema";
-import { randomUUID } from "crypto";
-
-// modify the interface with any CRUD methods
-// you might need
+import { db } from "./db";
+import { eq } from "drizzle-orm";
+import {
+  searches,
+  searchResults,
+  payments,
+  type Search,
+  type InsertSearch,
+  type SearchResult,
+  type InsertSearchResult,
+  type Payment,
+  type InsertPayment,
+} from "@shared/schema";
 
 export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  createSearch(data: InsertSearch): Promise<Search>;
+  getSearch(id: string): Promise<Search | undefined>;
+  updateSearchStatus(id: string, status: string): Promise<void>;
+  createSearchResult(data: InsertSearchResult): Promise<SearchResult>;
+  getSearchResults(searchId: string): Promise<SearchResult[]>;
+  unlockSearchResults(searchId: string): Promise<void>;
+  createPayment(data: InsertPayment): Promise<Payment>;
+  getPaymentBySearchId(searchId: string): Promise<Payment | undefined>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-
-  constructor() {
-    this.users = new Map();
+export class DatabaseStorage implements IStorage {
+  async createSearch(data: InsertSearch): Promise<Search> {
+    const [search] = await db.insert(searches).values(data).returning();
+    return search;
   }
 
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+  async getSearch(id: string): Promise<Search | undefined> {
+    const [search] = await db.select().from(searches).where(eq(searches.id, id));
+    return search;
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+  async updateSearchStatus(id: string, status: string): Promise<void> {
+    await db.update(searches).set({ status }).where(eq(searches.id, id));
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
+  async createSearchResult(data: InsertSearchResult): Promise<SearchResult> {
+    const [result] = await db.insert(searchResults).values(data).returning();
+    return result;
+  }
+
+  async getSearchResults(searchId: string): Promise<SearchResult[]> {
+    return db.select().from(searchResults).where(eq(searchResults.searchId, searchId));
+  }
+
+  async unlockSearchResults(searchId: string): Promise<void> {
+    await db.update(searchResults).set({ isUnlocked: true }).where(eq(searchResults.searchId, searchId));
+  }
+
+  async createPayment(data: InsertPayment): Promise<Payment> {
+    const [payment] = await db.insert(payments).values(data).returning();
+    return payment;
+  }
+
+  async getPaymentBySearchId(searchId: string): Promise<Payment | undefined> {
+    const [payment] = await db.select().from(payments).where(eq(payments.searchId, searchId));
+    return payment;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
