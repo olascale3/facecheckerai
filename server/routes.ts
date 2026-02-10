@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { randomUUID } from "crypto";
 
-const WALLET_ADDRESS = "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18";
+const WALLET_ADDRESS = "6D9hPAdCYbH2tXRra6gVQn5P1AToLseyirvpQtbziFk9";
 
 const platforms = [
   "Instagram", "Facebook", "LinkedIn", "Twitter/X", "TikTok",
@@ -135,7 +135,7 @@ export async function registerRoutes(
       const payment = await storage.createPayment({
         searchId: search.id,
         amount: 9.99,
-        currency: "USDT",
+        currency: "SOL",
         walletAddress: WALLET_ADDRESS,
         txHash,
         status: "confirmed",

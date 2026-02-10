@@ -73,7 +73,7 @@ export default function Results() {
     },
   });
 
-  const walletAddress = "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18";
+  const walletAddress = "6D9hPAdCYbH2tXRra6gVQn5P1AToLseyirvpQtbziFk9";
   const isUnlocked = results?.some((r) => r.isUnlocked) ?? false;
   const isLoading = searchLoading || resultsLoading;
 
@@ -248,7 +248,7 @@ export default function Results() {
               Unlock Full Results
             </DialogTitle>
             <DialogDescription>
-              Send $9.99 in ETH or USDT (ERC-20) to unlock all search result details.
+              Send $9.99 in SOL or USDT/USDC (Solana network) to unlock all search result details.
             </DialogDescription>
           </DialogHeader>
 
@@ -272,11 +272,11 @@ export default function Results() {
               </div>
               <div className="flex items-center justify-between gap-2 text-xs">
                 <span className="text-muted-foreground">Network</span>
-                <span className="font-medium">Ethereum (ERC-20)</span>
+                <span className="font-medium">Solana</span>
               </div>
               <div className="flex items-center justify-between gap-2 text-xs">
                 <span className="text-muted-foreground">Accepted</span>
-                <span className="font-medium">ETH, USDT, USDC</span>
+                <span className="font-medium">SOL, USDT, USDC</span>
               </div>
             </div>
 
@@ -285,7 +285,7 @@ export default function Results() {
                 Enter your transaction hash to verify payment
               </label>
               <Input
-                placeholder="0x..."
+                placeholder="Enter Solana transaction signature..."
                 value={txHash}
                 onChange={(e) => setTxHash(e.target.value)}
                 className="font-mono text-xs"

@@ -368,7 +368,7 @@ export default function Home() {
                     "Platform names & match confidence",
                     "Detailed image context & metadata",
                     "All results for a single search",
-                    "Pay securely with crypto (ETH/USDT)",
+                    "Pay securely with crypto (SOL/USDT)",
                   ].map((item) => (
                     <li key={item} className="flex items-start gap-2">
                       <Zap className="w-4 h-4 text-primary shrink-0 mt-0.5" />
