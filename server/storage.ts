@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import {
   searches,
   searchResults,
@@ -10,7 +10,7 @@ import {
   type InsertSearchResult,
   type Payment,
   type InsertPayment,
-} from "@shared/schema";
+} from "../shared/schema";
 
 export interface IStorage {
   createSearch(data: InsertSearch): Promise<Search>;
@@ -23,6 +23,7 @@ export interface IStorage {
   getPaymentBySearchId(searchId: string): Promise<Payment | undefined>;
   getAllSearches(): Promise<Search[]>;
   getAllPayments(): Promise<Payment[]>;
+  claimSearch(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -69,6 +70,15 @@ export class DatabaseStorage implements IStorage {
 
   async getAllPayments(): Promise<Payment[]> {
     return db.select().from(payments).orderBy(desc(payments.createdAt));
+  }
+
+  async claimSearch(id: string): Promise<boolean> {
+    const result = await db
+      .update(searches)
+      .set({ status: "generating" })
+      .where(and(eq(searches.id, id), eq(searches.status, "processing")))
+      .returning();
+    return result.length > 0;
   }
 }
 

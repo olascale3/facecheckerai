@@ -25,10 +25,17 @@ export default function Scanning() {
   const [currentStep, setCurrentStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
 
-  const { data: search } = useQuery<Search>({
+  const { data: search, isError } = useQuery<Search>({
     queryKey: ["/api/searches", id],
     refetchInterval: 2000,
+    retry: 2,
   });
+
+  useEffect(() => {
+    if (isError) {
+      navigate("/");
+    }
+  }, [isError, navigate]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -52,6 +59,9 @@ export default function Scanning() {
     if (search?.status === "completed") {
       const timer = setTimeout(() => navigate(`/results/${id}`), 800);
       return () => clearTimeout(timer);
+    }
+    if (search?.status === "failed") {
+      navigate("/");
     }
   }, [search?.status, id, navigate]);
 

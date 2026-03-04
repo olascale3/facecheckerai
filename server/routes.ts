@@ -1,7 +1,6 @@
 import type { Express } from "express";
-import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { randomUUID, createHmac } from "crypto";
+import { randomUUID, createHmac, timingSafeEqual } from "crypto";
 
 const WALLET_ADDRESS = "6D9hPAdCYbH2tXRra6gVQn5P1AToLseyirvpQtbziFk9";
 
@@ -60,10 +59,7 @@ const generateMockResults = (searchId: string) => {
   return results.sort((a, b) => b.matchScore - a.matchScore);
 };
 
-export async function registerRoutes(
-  httpServer: Server,
-  app: Express
-): Promise<Server> {
+export async function registerRoutes(app: Express): Promise<void> {
   app.post("/api/searches", async (req, res) => {
     try {
       const { imageData } = req.body;
@@ -79,19 +75,6 @@ export async function registerRoutes(
         status: "processing",
       });
 
-      setTimeout(async () => {
-        try {
-          const mockResults = generateMockResults(search.id);
-          for (const result of mockResults) {
-            await storage.createSearchResult(result);
-          }
-          await storage.updateSearchStatus(search.id, "completed");
-        } catch (err) {
-          console.error("Error generating results:", err);
-          await storage.updateSearchStatus(search.id, "failed");
-        }
-      }, 6000);
-
       res.json(search);
     } catch (err) {
       console.error("Error creating search:", err);
@@ -101,10 +84,32 @@ export async function registerRoutes(
 
   app.get("/api/searches/:id", async (req, res) => {
     try {
-      const search = await storage.getSearch(req.params.id);
+      let search = await storage.getSearch(req.params.id);
       if (!search) {
         return res.status(404).json({ message: "Search not found" });
       }
+
+      // Lazy generation: if processing for > 6 seconds, generate results
+      if (search.status === "processing" && search.createdAt) {
+        const elapsed = Date.now() - new Date(search.createdAt).getTime();
+        if (elapsed >= 6000) {
+          const claimed = await storage.claimSearch(search.id);
+          if (claimed) {
+            try {
+              const mockResults = generateMockResults(search.id);
+              for (const result of mockResults) {
+                await storage.createSearchResult(result);
+              }
+              await storage.updateSearchStatus(search.id, "completed");
+            } catch (err) {
+              console.error("Error generating results:", err);
+              await storage.updateSearchStatus(search.id, "failed");
+            }
+          }
+          search = (await storage.getSearch(req.params.id))!;
+        }
+      }
+
       res.json(search);
     } catch (err) {
       res.status(500).json({ message: "Failed to get search" });
@@ -113,6 +118,10 @@ export async function registerRoutes(
 
   app.get("/api/searches/:id/results", async (req, res) => {
     try {
+      const search = await storage.getSearch(req.params.id);
+      if (!search) {
+        return res.status(404).json({ message: "Search not found" });
+      }
       const results = await storage.getSearchResults(req.params.id);
       res.json(results);
     } catch (err) {
@@ -153,25 +162,30 @@ export async function registerRoutes(
   const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
   const TOKEN_SECRET = process.env.SESSION_SECRET || "fallback-secret";
   const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000;
-  const adminTokens = new Map<string, number>();
   let loginAttempts = 0;
   let lastAttemptReset = Date.now();
 
   function generateAdminToken(): string {
-    const payload = `${randomUUID()}-${Date.now()}`;
-    const token = createHmac("sha256", TOKEN_SECRET).update(payload).digest("hex");
-    adminTokens.set(token, Date.now() + TOKEN_EXPIRY_MS);
-    return token;
+    const expiry = String(Date.now() + TOKEN_EXPIRY_MS);
+    const signature = createHmac("sha256", TOKEN_SECRET).update(expiry).digest("hex");
+    return `${Buffer.from(expiry).toString("base64")}.${signature}`;
   }
 
   function isValidAdminToken(token: string): boolean {
-    const expiry = adminTokens.get(token);
-    if (!expiry) return false;
-    if (Date.now() > expiry) {
-      adminTokens.delete(token);
+    const parts = token.split(".");
+    if (parts.length !== 2) return false;
+    try {
+      const payload = Buffer.from(parts[0], "base64").toString();
+      const expectedSig = createHmac("sha256", TOKEN_SECRET).update(payload).digest("hex");
+      const sigBuf = Buffer.from(parts[1], "hex");
+      const expectedBuf = Buffer.from(expectedSig, "hex");
+      if (sigBuf.length !== expectedBuf.length) return false;
+      if (!timingSafeEqual(sigBuf, expectedBuf)) return false;
+      const expiry = parseInt(payload, 10);
+      return !isNaN(expiry) && Date.now() <= expiry;
+    } catch {
       return false;
     }
-    return true;
   }
 
   function requireAdmin(req: any, res: any, next: any) {
@@ -259,5 +273,4 @@ export async function registerRoutes(
     }
   });
 
-  return httpServer;
 }

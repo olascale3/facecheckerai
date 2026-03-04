@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["tsx", "server/index.ts"],
+      "port": 3000,
+      "env": {
+        "NODE_ENV": "development",
+        "DATABASE_URL": "postgresql://om@localhost:5432/facechecker",
+        "ADMIN_PASSWORD": "admin123",
+        "PORT": "3000"
+      }
+    }
+  ]
+}

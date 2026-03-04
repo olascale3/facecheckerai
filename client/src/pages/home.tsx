@@ -7,12 +7,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Upload, Shield, Search, Zap, Eye, Lock, Globe, AlertTriangle, ChevronDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useToast } from "@/hooks/use-toast";
+
+const MAX_FILE_SIZE = 3 * 1024 * 1024; // 3MB (Vercel 4.5MB body limit after base64 encoding)
 
 export default function Home() {
   const [, navigate] = useLocation();
   const [dragOver, setDragOver] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
   const uploadMutation = useMutation({
     mutationFn: async (imageData: string) => {
@@ -22,17 +26,27 @@ export default function Home() {
     onSuccess: (data) => {
       navigate(`/scanning/${data.id}`);
     },
+    onError: () => {
+      toast({ title: "Upload Failed", description: "Something went wrong. Please try again.", variant: "destructive" });
+    },
   });
 
   const handleFile = useCallback((file: File) => {
-    if (!file.type.startsWith("image/")) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Invalid File", description: "Please upload an image file (JPG, PNG, or WEBP).", variant: "destructive" });
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      toast({ title: "File Too Large", description: "Please upload an image under 3MB.", variant: "destructive" });
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (e) => {
       const data = e.target?.result as string;
       setPreview(data);
     };
     reader.readAsDataURL(file);
-  }, []);
+  }, [toast]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -206,7 +220,7 @@ export default function Home() {
                           {dragOver ? "Drop your image here" : "Drag & drop a face photo"}
                         </p>
                         <p className="text-sm text-muted-foreground mb-4">or click to browse files</p>
-                        <p className="text-xs text-muted-foreground">Supports JPG, PNG, WEBP up to 10MB</p>
+                        <p className="text-xs text-muted-foreground">Supports JPG, PNG, WEBP up to 3MB</p>
                       </div>
                     </motion.div>
                   ) : (

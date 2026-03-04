@@ -49,12 +49,13 @@ export default function Results() {
   const [txHash, setTxHash] = useState("");
   const [copied, setCopied] = useState(false);
 
-  const { data: search, isLoading: searchLoading } = useQuery<Search>({
+  const { data: search, isLoading: searchLoading, isError: searchError } = useQuery<Search>({
     queryKey: ["/api/searches", id],
   });
 
   const { data: results, isLoading: resultsLoading } = useQuery<SearchResult[]>({
     queryKey: ["/api/searches", id, "results"],
+    enabled: !!search,
   });
 
   const unlockMutation = useMutation({
@@ -91,6 +92,40 @@ export default function Results() {
     );
   }
 
+  if (searchError || !search) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center gap-2 h-14">
+            <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate("/")}>
+              <div className="w-8 h-8 rounded-md bg-primary/20 flex items-center justify-center">
+                <Shield className="w-4 h-4 text-primary" />
+              </div>
+              <span className="font-semibold text-base tracking-tight">FaceChecker.AI</span>
+            </div>
+          </div>
+        </header>
+        <div className="flex-1 flex items-center justify-center p-4">
+          <Card className="w-full max-w-sm">
+            <CardContent className="p-8 text-center">
+              <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center mx-auto mb-4">
+                <Shield className="w-7 h-7 text-muted-foreground" />
+              </div>
+              <h3 className="font-semibold mb-2">Search Not Found</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                This search doesn't exist or has expired.
+              </p>
+              <Button variant="outline" onClick={() => navigate("/")}>
+                <ArrowLeft className="w-4 h-4" />
+                Start a New Search
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
@@ -108,7 +143,7 @@ export default function Results() {
               <ArrowLeft className="w-4 h-4" />
               New Search
             </Button>
-            {!isUnlocked && (
+            {!isUnlocked && results && results.length > 0 && (
               <Button size="sm" onClick={() => setPaymentOpen(true)} data-testid="button-unlock-results">
                 <Lock className="w-4 h-4" />
                 Unlock All Results
@@ -138,7 +173,7 @@ export default function Results() {
             )}
           </div>
 
-          {!isUnlocked && (
+          {!isUnlocked && results && results.length > 0 && (
             <Card className="mb-6 border-primary/30">
               <CardContent className="p-4 flex items-center gap-4 flex-wrap">
                 <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
