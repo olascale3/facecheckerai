@@ -1,8 +1,6 @@
 import type { Express } from "express";
 import { storage } from "./storage";
 import { randomUUID, createHmac, timingSafeEqual } from "crypto";
-import FormData from "form-data";
-import fetch from "node-fetch";
 
 const WALLET_ADDRESS = "6D9hPAdCYbH2tXRra6gVQn5P1AToLseyirvpQtbziFk9";
 
@@ -61,7 +59,7 @@ const generateMockResults = (searchId: string) => {
   return results.sort((a, b) => b.matchScore - a.matchScore);
 };
 
-// Call the Railway face-search-api and map results to our schema
+// Call the Railway face-search-api using native fetch + FormData (Node 18+)
 const callFaceSearchAPI = async (imageData: string, searchId: string) => {
   const FACE_API_URL = process.env.FACE_API_URL;
   if (!FACE_API_URL) {
@@ -69,48 +67,53 @@ const callFaceSearchAPI = async (imageData: string, searchId: string) => {
     return null;
   }
 
-  // Strip the base64 data URL prefix and convert to buffer
-  const base64 = imageData.replace(/^data:image\/\w+;base64,/, "");
-  const buffer = Buffer.from(base64, "base64");
+  try {
+    // Convert base64 dataURL to a Blob
+    const base64 = imageData.replace(/^data:image\/\w+;base64,/, "");
+    const binary = Buffer.from(base64, "base64");
+    const blob = new Blob([binary], { type: "image/jpeg" });
 
-  const form = new FormData();
-  form.append("file", buffer, { filename: "photo.jpg", contentType: "image/jpeg" });
+    // Use native FormData and fetch (available in Node 18+)
+    const form = new FormData();
+    form.append("file", blob, "photo.jpg");
 
-  const response = await fetch(`${FACE_API_URL}/api/v1/search`, {
-    method: "POST",
-    body: form,
-    headers: form.getHeaders(),
-    // 30 second timeout
-    signal: AbortSignal.timeout(30000),
-  } as any);
+    const response = await fetch(`${FACE_API_URL}/api/v1/search`, {
+      method: "POST",
+      body: form,
+      signal: AbortSignal.timeout(30000),
+    });
 
-  if (!response.ok) {
-    console.error("Face API error:", response.status, await response.text());
+    if (!response.ok) {
+      console.error("Face API error:", response.status, await response.text());
+      return null;
+    }
+
+    const data = await response.json() as any;
+    console.log(`Face API returned ${data.faces_found} faces, ${data.matches?.length ?? 0} matches`);
+
+    if (!data.matches || data.matches.length === 0) return null;
+
+    return data.matches.map((match: any) => {
+      let platform = "Unknown";
+      try {
+        platform = new URL(match.source_url).hostname.replace("www.", "");
+      } catch {}
+
+      return {
+        searchId,
+        platform,
+        matchScore: Math.round(match.score) / 100,
+        title: `Face match found (${match.score}% confidence)`,
+        description: `A ${match.score}% facial match was detected via biometric analysis. Source: ${platform}`,
+        sourceUrl: match.source_url || "",
+        thumbnailUrl: match.image_url || `https://picsum.photos/seed/${searchId}/200/200`,
+        isUnlocked: false,
+      };
+    });
+  } catch (err) {
+    console.error("Face API call failed:", err);
     return null;
   }
-
-  const data = await response.json() as any;
-  console.log(`Face API returned ${data.faces_found} faces, ${data.matches?.length ?? 0} matches`);
-
-  if (!data.matches || data.matches.length === 0) return null;
-
-  return data.matches.map((match: any) => {
-    let platform = "Unknown";
-    try {
-      platform = new URL(match.source_url).hostname.replace("www.", "");
-    } catch {}
-
-    return {
-      searchId,
-      platform,
-      matchScore: Math.round(match.score) / 100,
-      title: `Face match found (${match.score}% confidence)`,
-      description: `A ${match.score}% facial match was detected via biometric analysis. Source: ${platform}`,
-      sourceUrl: match.source_url || "",
-      thumbnailUrl: match.image_url || `https://picsum.photos/seed/${searchId}/200/200`,
-      isUnlocked: false,
-    };
-  });
 };
 
 export async function registerRoutes(app: Express): Promise<void> {
@@ -329,5 +332,4 @@ export async function registerRoutes(app: Express): Promise<void> {
       res.status(500).json({ message: "Failed to fetch stats" });
     }
   });
-
 }
