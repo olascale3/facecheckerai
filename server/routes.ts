@@ -1,7 +1,6 @@
 import type { Express } from "express";
 import { storage } from "./storage";
 import { randomUUID, createHmac, timingSafeEqual } from "crypto";
-import multer from "multer";
 import FormData from "form-data";
 import fetch from "node-fetch";
 
@@ -62,6 +61,58 @@ const generateMockResults = (searchId: string) => {
   return results.sort((a, b) => b.matchScore - a.matchScore);
 };
 
+// Call the Railway face-search-api and map results to our schema
+const callFaceSearchAPI = async (imageData: string, searchId: string) => {
+  const FACE_API_URL = process.env.FACE_API_URL;
+  if (!FACE_API_URL) {
+    console.warn("FACE_API_URL not set, falling back to mock results");
+    return null;
+  }
+
+  // Strip the base64 data URL prefix and convert to buffer
+  const base64 = imageData.replace(/^data:image\/\w+;base64,/, "");
+  const buffer = Buffer.from(base64, "base64");
+
+  const form = new FormData();
+  form.append("file", buffer, { filename: "photo.jpg", contentType: "image/jpeg" });
+
+  const response = await fetch(`${FACE_API_URL}/api/v1/search`, {
+    method: "POST",
+    body: form,
+    headers: form.getHeaders(),
+    // 30 second timeout
+    signal: AbortSignal.timeout(30000),
+  } as any);
+
+  if (!response.ok) {
+    console.error("Face API error:", response.status, await response.text());
+    return null;
+  }
+
+  const data = await response.json() as any;
+  console.log(`Face API returned ${data.faces_found} faces, ${data.matches?.length ?? 0} matches`);
+
+  if (!data.matches || data.matches.length === 0) return null;
+
+  return data.matches.map((match: any) => {
+    let platform = "Unknown";
+    try {
+      platform = new URL(match.source_url).hostname.replace("www.", "");
+    } catch {}
+
+    return {
+      searchId,
+      platform,
+      matchScore: Math.round(match.score) / 100,
+      title: `Face match found (${match.score}% confidence)`,
+      description: `A ${match.score}% facial match was detected via biometric analysis. Source: ${platform}`,
+      sourceUrl: match.source_url || "",
+      thumbnailUrl: match.image_url || `https://picsum.photos/seed/${searchId}/200/200`,
+      isUnlocked: false,
+    };
+  });
+};
+
 export async function registerRoutes(app: Express): Promise<void> {
   app.post("/api/searches", async (req, res) => {
     try {
@@ -99,8 +150,11 @@ export async function registerRoutes(app: Express): Promise<void> {
           const claimed = await storage.claimSearch(search.id);
           if (claimed) {
             try {
-              const mockResults = generateMockResults(search.id);
-              for (const result of mockResults) {
+              // Try real face search API first, fall back to mock if no results
+              const realResults = await callFaceSearchAPI(search.imageData, search.id);
+              const resultsToSave = realResults ?? generateMockResults(search.id);
+
+              for (const result of resultsToSave) {
                 await storage.createSearchResult(result);
               }
               await storage.updateSearchStatus(search.id, "completed");
