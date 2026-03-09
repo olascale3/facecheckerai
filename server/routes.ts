@@ -1,6 +1,9 @@
 import type { Express } from "express";
 import { storage } from "./storage";
 import { randomUUID, createHmac, timingSafeEqual } from "crypto";
+import multer from "multer";
+import FormData from "form-data";
+import fetch from "node-fetch";
 
 const WALLET_ADDRESS = "6D9hPAdCYbH2tXRra6gVQn5P1AToLseyirvpQtbziFk9";
 
