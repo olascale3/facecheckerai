@@ -1,11 +1,21 @@
-import { drizzle } from "drizzle-orm/node-postgres";
-import pg from "pg";
-import * as schema from "../shared/schema.js";
+import type { VercelRequest, VercelResponse } from "@vercel/node";
+import express from "express";
+import { registerRoutes } from "../server/routes.js";
 
-const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-  max: 1,
-});
+const app = express();
+app.use(express.json({ limit: "5mb" }));
+app.use(express.urlencoded({ extended: false }));
 
-export const db = drizzle(pool, { schema });
+let initialized = false;
+
+async function ensureRoutes() {
+  if (!initialized) {
+    await registerRoutes(app);
+    initialized = true;
+  }
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  await ensureRoutes();
+  app(req as any, res as any);
+}
