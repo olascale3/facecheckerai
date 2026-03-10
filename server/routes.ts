@@ -1,7 +1,8 @@
 import type { Express } from "express";
 import { storage } from "./storage";
-import { db } from "./db";
-import { sql } from "drizzle-orm";
+import { pool } from "./db";
+
+
 import { randomUUID, createHmac, timingSafeEqual } from "crypto";
 
 const WALLET_ADDRESS = "6D9hPAdCYbH2tXRra6gVQn5P1AToLseyirvpQtbziFk9";
@@ -130,7 +131,7 @@ export async function registerRoutes(app: Express): Promise<void> {
       db: "untested",
     };
     try {
-      const result = await db.execute(sql`SELECT 1 as ping`);
+      await pool.query("SELECT 1");
       status.db = "connected";
       status.ok = true;
     } catch (err: any) {
