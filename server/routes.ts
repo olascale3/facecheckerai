@@ -1,5 +1,7 @@
 import type { Express } from "express";
 import { storage } from "./storage";
+import { db } from "./db";
+import { sql } from "drizzle-orm";
 import { randomUUID, createHmac, timingSafeEqual } from "crypto";
 
 const WALLET_ADDRESS = "6D9hPAdCYbH2tXRra6gVQn5P1AToLseyirvpQtbziFk9";
@@ -117,6 +119,26 @@ const callFaceSearchAPI = async (imageData: string, searchId: string) => {
 };
 
 export async function registerRoutes(app: Express): Promise<void> {
+  // Health check endpoint - diagnose DB and env issues
+  app.get("/api/health", async (_req, res) => {
+    const status: any = {
+      ok: false,
+      env: {
+        DATABASE_URL: process.env.DATABASE_URL ? "SET (" + process.env.DATABASE_URL.split("@")[1] + ")" : "MISSING",
+        FACE_API_URL: process.env.FACE_API_URL || "MISSING",
+      },
+      db: "untested",
+    };
+    try {
+      const result = await db.execute(sql`SELECT 1 as ping`);
+      status.db = "connected";
+      status.ok = true;
+    } catch (err: any) {
+      status.db = "error: " + err.message;
+    }
+    res.status(status.ok ? 200 : 503).json(status);
+  });
+
   app.post("/api/searches", async (req, res) => {
     try {
       const { imageData } = req.body;
@@ -133,9 +155,12 @@ export async function registerRoutes(app: Express): Promise<void> {
       });
 
       res.json(search);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error creating search:", err);
-      res.status(500).json({ message: "Failed to create search" });
+      res.status(500).json({ 
+        message: "Failed to create search",
+        detail: process.env.NODE_ENV !== "production" ? err?.message : undefined
+      });
     }
   });
 
