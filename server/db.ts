@@ -2,13 +2,15 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "../shared/schema";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL environment variable is not set");
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  console.error("WARNING: DATABASE_URL is not set");
 }
 
 const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  connectionString: connectionString || "postgresql://localhost/placeholder",
+  ssl: connectionString ? { rejectUnauthorized: false } : false,
   max: 1,
   connectionTimeoutMillis: 10000,
   idleTimeoutMillis: 30000,
