@@ -1,19 +1,26 @@
-import pg from "pg";
+import { drizzle } from "drizzle-orm/neon-http";
+import { neon } from "@neondatabase/serverless";
+import * as schema from "../shared/schema";
 
 const connectionString = process.env.DATABASE_URL;
-
 if (!connectionString) {
-  console.error("WARNING: DATABASE_URL is not set");
+  throw new Error("DATABASE_URL environment variable is required");
 }
 
-export const pool = new pg.Pool({
-  connectionString: connectionString || "postgresql://localhost/placeholder",
-  ssl: connectionString ? { rejectUnauthorized: false } : false,
-  max: 1,
-  connectionTimeoutMillis: 10000,
-  idleTimeoutMillis: 30000,
-});
+const sql = neon(connectionString);
+export const db = drizzle(sql, { schema });
 
-pool.on("error", (err) => {
-  console.error("Postgres pool error:", err.message);
-});
+export const pool = {
+  query: async (text: string, params?: any[]) => {
+    try {
+      const result = await sql(text, params || []);
+      return { rows: result };
+    } catch (error) {
+      console.error("Database query error:", error);
+      throw error;
+    }
+  },
+  end: () => Promise.resolve(),
+  connect: () => Promise.resolve({ release: () => {} }),
+  on: () => {},
+};
